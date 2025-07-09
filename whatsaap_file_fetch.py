@@ -10,12 +10,6 @@ from dotenv import load_dotenv
 import time
 import re
 import mimetypes
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.options import Options
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
 import urllib.parse
 
 # Load environment variables
@@ -30,312 +24,248 @@ if not API_KEY:
 genai.configure(api_key=API_KEY)
 model = genai.GenerativeModel("gemini-1.5-flash")
 
-class XeroAutomation:
+# Xero API Configuration
+XERO_CLIENT_ID = "9D62E06B38054EDEA577D97E40879B12"
+XERO_CLIENT_SECRET = "ga4dshD3FvxV4akIr1_uB9zDJW3pRyDA10YGb72rpNpGmTw0"
+
+# Global variables to store tokens
+XERO_REFRESH_TOKEN = "jKnAS7ftPznEYT_mpVSkgIVMjmF7yU8bHjUUSeWJZI0"  # Initial refresh token
+XERO_ACCESS_TOKEN = None
+XERO_TENANT_ID = None
+
+def load_refresh_token():
+    """
+    Load refresh token from JSON file if it exists
+    """
+    try:
+        if os.path.exists("refresh_token.json"):
+            with open("refresh_token.json", "r") as f:
+                data = json.load(f)
+                return data.get("refresh_token", XERO_REFRESH_TOKEN)
+    except Exception as e:
+        print(f"Error loading refresh token: {e}")
+    return XERO_REFRESH_TOKEN
+
+def save_refresh_token(token):
+    """
+    Save refresh token to JSON file with metadata
+    """
+    try:
+        from datetime import datetime
+        data = {
+            "refresh_token": token,
+            "last_updated": datetime.now().isoformat() + "Z",
+            "client_id": XERO_CLIENT_ID,
+            "client_secret": XERO_CLIENT_SECRET
+        }
+        with open("refresh_token.json", "w") as f:
+            json.dump(data, f, indent=4)
+        print(f"✅ Refresh token saved to JSON file")
+    except Exception as e:
+        print(f"Error saving refresh token: {e}")
+
+# Load the stored refresh token
+XERO_REFRESH_TOKEN = load_refresh_token()
+
+class XeroTokenManager:
     def __init__(self):
-        self.driver = None
-        self.auth_code = None
+        # Always use the current global refresh token
+        global XERO_REFRESH_TOKEN
+        self.refresh_token = XERO_REFRESH_TOKEN
+        self.access_token = XERO_ACCESS_TOKEN
+        self.tenant_id = XERO_TENANT_ID
         
-    def setup_driver(self):
-        """Setup Chrome driver with appropriate options"""
-        chrome_options = Options()
-        # Uncomment the line below if you want to run in headless mode
-        # chrome_options.add_argument("--headless")
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.add_argument("--disable-gpu")
-        chrome_options.add_argument("--window-size=1920,1080")
-        
-        # Add user agent to avoid detection
-        chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-        
-        self.driver = webdriver.Chrome(options=chrome_options)
-        self.driver.implicitly_wait(10)
-        
-    def get_auth_code(self, email="bhuvve@gmail.com", password="Bhuvan@94"):
+    def refresh_access_token(self):
         """
-        Open Xero authorization URL, log in with provided credentials, and extract auth code
-        
-        Args:
-            email (str): Gmail address for login
-            password (str): Password for login
-            
-        Returns:
-            str: Authorization code or None if failed
+        Refresh the access token using the stored refresh token
         """
         try:
-            # Setup driver
-            self.setup_driver()
+            token_url = "https://identity.xero.com/connect/token"
             
-            # Xero authorization URL
-            auth_url = "https://login.xero.com/identity/connect/authorize?response_type=code&client_id=9D62E06B38054EDEA577D97E40879B12&redirect_uri=http://localhost:5000/callback&scope=openid profile email accounting.transactions accounting.settings&state=123"
+            payload = {
+                "grant_type": "refresh_token",
+                "refresh_token": self.refresh_token,
+                "client_id": XERO_CLIENT_ID,
+                "client_secret": XERO_CLIENT_SECRET
+            }
             
-            print("Opening Xero authorization URL...")
-            self.driver.get(auth_url)
+            headers = {
+                "Content-Type": "application/x-www-form-urlencoded"
+            }
             
-            # Wait for the login page to load
-            wait = WebDriverWait(self.driver, 20)
+            response = requests.post(token_url, data=payload, headers=headers)
+            print(f"Token refresh status code: {response.status_code}")
             
-            # Look for email input field
-            try:
-                email_input = wait.until(EC.presence_of_element_located((By.ID, "email")))
-            except TimeoutException:
-                # Try alternative selectors
-                try:
-                    email_input = self.driver.find_element(By.NAME, "email")
-                except NoSuchElementException:
-                    email_input = self.driver.find_element(By.CSS_SELECTOR, "input[type='email']")
-            
-            print("Entering email...")
-            email_input.clear()
-            email_input.send_keys(email)
-            
-            # Find and click continue button
-            try:
-                continue_button = self.driver.find_element(By.XPATH, "//button[contains(text(), 'Continue') or contains(text(), 'Sign in') or contains(text(), 'Next')]")
-            except NoSuchElementException:
-                # Try alternative selectors
-                continue_button = self.driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
-            
-            print("Clicking continue button...")
-            continue_button.click()
-            
-            # Wait for password field
-            time.sleep(2)
-            
-            try:
-                password_input = wait.until(EC.presence_of_element_located((By.ID, "password")))
-            except TimeoutException:
-                # Try alternative selectors
-                try:
-                    password_input = self.driver.find_element(By.NAME, "password")
-                except NoSuchElementException:
-                    password_input = self.driver.find_element(By.CSS_SELECTOR, "input[type='password']")
-            
-            print("Entering password...")
-            password_input.clear()
-            password_input.send_keys(password)
-            
-            # Find and click sign in button
-            try:
-                signin_button = self.driver.find_element(By.XPATH, "//button[contains(text(), 'Sign in') or contains(text(), 'Login') or contains(text(), 'Continue')]")
-            except NoSuchElementException:
-                # Try alternative selectors
-                signin_button = self.driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
-            
-            print("Clicking sign in button...")
-            signin_button.click()
-            
-            # Wait for authorization page or redirect
-            time.sleep(5)
-            
-            # Check if we need to authorize the app
-            try:
-                authorize_button = wait.until(EC.presence_of_element_located((By.XPATH, "//button[contains(text(), 'Authorize') or contains(text(), 'Allow') or contains(text(), 'Continue')]")))
-                print("Clicking authorize button...")
-                authorize_button.click()
-            except TimeoutException:
-                print("No authorization button found, continuing...")
-            
-            # Wait for redirect to callback URL
-            time.sleep(3)
-            
-            # Get current URL and extract auth code
-            current_url = self.driver.current_url
-            print(f"Current URL: {current_url}")
-            
-            # Extract authorization code from URL
-            self.auth_code = self.extract_auth_code(current_url)
-            
-            if self.auth_code:
-                print(f"✅ Authorization code extracted: {self.auth_code}")
-                return self.auth_code
+            if response.status_code == 200:
+                token_data = response.json()
+                print("Token refresh successful")
+                print(json.dumps(token_data, indent=4))
+                
+                # Update tokens
+                old_refresh_token = self.refresh_token
+                self.access_token = token_data.get("access_token")
+                new_refresh_token = token_data.get("refresh_token")  # Save new refresh token
+                
+                # Update global variables
+                global XERO_ACCESS_TOKEN, XERO_REFRESH_TOKEN
+                XERO_ACCESS_TOKEN = self.access_token
+                XERO_REFRESH_TOKEN = new_refresh_token
+                self.refresh_token = new_refresh_token
+                
+                # Save the new refresh token to file
+                save_refresh_token(new_refresh_token)
+                
+                print(f"🔄 Token Refresh Summary:")
+                print(f"   Old Refresh Token: {old_refresh_token[:30]}...")
+                print(f"   New Refresh Token: {new_refresh_token[:30]}...")
+                print(f"   New Access Token: {self.access_token[:50]}...")
+                print(f"   ✅ Tokens replaced and saved to file")
+                
+                return True
             else:
-                print("❌ Failed to extract authorization code")
+                print(f"❌ Token refresh failed: {response.status_code}")
+                print(response.text)
+                return False
+                
+        except Exception as e:
+            print(f"❌ Error refreshing token: {str(e)}")
+            return False
+    
+    def get_tenant_id(self):
+        """
+        Get tenant ID using the current access token
+        """
+        if not self.access_token:
+            print("❌ No access token available")
+            return None
+            
+        try:
+            url = "https://api.xero.com/connections"
+            headers = {
+                "Authorization": f"Bearer {self.access_token}",
+                "Accept": "application/json"
+            }
+            
+            response = requests.get(url, headers=headers)
+            print(f"Tenant ID request status code: {response.status_code}")
+            
+            if response.status_code == 200:
+                data = response.json()
+                print("Tenant ID request successful")
+                print(json.dumps(data, indent=4))
+                
+                if data:
+                    self.tenant_id = data[0]["tenantId"]
+                    tenant_name = data[0]["tenantName"]
+                    
+                    # Update global variable
+                    global XERO_TENANT_ID
+                    XERO_TENANT_ID = self.tenant_id
+                    
+                    print(f"✅ Tenant ID: {self.tenant_id}")
+                    print(f"✅ Tenant Name: {tenant_name}")
+                    return self.tenant_id
+                else:
+                    print("⚠️ No connections found")
+                    return None
+            elif response.status_code == 401:
+                print("⚠️ Access token expired, refreshing...")
+                if self.refresh_access_token():
+                    return self.get_tenant_id()  # Retry with new token
+                else:
+                    return None
+            else:
+                print(f"❌ Failed to get tenant ID: {response.status_code}")
+                print(response.text)
                 return None
                 
         except Exception as e:
-            print(f"❌ Error during authentication: {str(e)}")
+            print(f"❌ Error getting tenant ID: {str(e)}")
             return None
-        finally:
-            if self.driver:
-                self.driver.quit()
     
-    def extract_auth_code(self, url):
+    def get_valid_credentials(self):
         """
-        Extract authorization code from callback URL
+        Get valid access token and tenant ID, refreshing if necessary
+        """
+        # If we don't have an access token, refresh it
+        if not self.access_token:
+            if not self.refresh_access_token():
+                return None, None
         
-        Args:
-            url (str): The callback URL containing the auth code
-            
-        Returns:
-            str: Authorization code or None if not found
-        """
-        try:
-            parsed_url = urllib.parse.urlparse(url)
-            query_params = urllib.parse.parse_qs(parsed_url.query)
-            # Check for 'code' first (standard OAuth)
-            if 'code' in query_params:
-                return query_params['code'][0]
-            # If not found, check for 'consentId' (Xero special case)
-            if 'consentId' in query_params:
-                return query_params['consentId'][0]
-            # Fallback: regex search for either 'code' or 'consentId'
-            code_pattern = r'[?&](code|consentId)=([^&]+)'
-            match = re.search(code_pattern, url)
-            if match:
-                return match.group(2)
-            return None
-        except Exception as e:
-            print(f"Error extracting auth code: {str(e)}")
-            return None
-    
-    def get_auth_code_xpath(self, email="bhuvve@gmail.com", password="Bhuvan@94"):
-        self.setup_driver()
-        auth_url = "https://login.xero.com/identity/connect/authorize?response_type=code&client_id=9D62E06B38054EDEA577D97E40879B12&redirect_uri=http://localhost:5000/callback&scope=openid profile email accounting.transactions accounting.settings&state=123"
-        self.driver.get(auth_url)
-        wait = WebDriverWait(self.driver, 10)
-
-        # Wait for email input to be visible and interactable
-        email_input = wait.until(EC.visibility_of_element_located((By.XPATH, '//*[@id="xl-form-email"]')))
-        email_input.clear()
-        email_input.send_keys(email)
-
-        # Wait for password input to be visible and interactable
-        password_input = wait.until(EC.visibility_of_element_located((By.XPATH, '//*[@id="xl-form-password"]')))
-        password_input.clear()
-        password_input.send_keys(password)
-
-        # Wait for submit button to be clickable
-        submit_btn = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="xl-form-submit"]')))
-        submit_btn.click()
-
-        # Wait for MFA prompt and click "Not now" if it appears
-        try:
-            not_now_btn = WebDriverWait(self.driver, 5).until(
-                EC.element_to_be_clickable((By.XPATH, '//*[@id="stepper-inline-standard-panel"]/div/div[1]/button[2]'))
-            )
-            not_now_btn.click()
-            print("Clicked 'Not now' on MFA prompt.")
-        except Exception:
-            print("No MFA prompt or 'Not now' button not found, continuing...")
-
-        # Wait for the consent page and click "Allow access for 30 minutes"
-        try:
-            approve_btn = WebDriverWait(self.driver, 10).until(
-                EC.element_to_be_clickable((By.XPATH, '//*[@id="approveButton"]'))
-            )
-            approve_btn.click()
-            print("Clicked 'Allow access for 30 minutes' on consent page.")
-        except Exception:
-            print("Consent page/button not found, continuing...")
-
-        # Wait for redirect to callback URL and extract auth code
-        WebDriverWait(self.driver, 15).until(lambda d: "callback?code=" in d.current_url)
-        current_url = self.driver.current_url
-        print(f"Current URL: {current_url}")
-        self.auth_code = self.extract_auth_code(current_url)
-        if self.auth_code:
-            print(f"✅ Authorization code extracted: {self.auth_code}")
-            return self.auth_code
-        else:
-            print("❌ Failed to extract authorization code")
-            return None
-
-    def get_access_token_from_auth_code(self, auth_code, client_id, client_secret, redirect_uri):
-        """
-        Exchange Xero OAuth authorization code for access token.
-        Returns the access_token (str) if successful, else None.
-        """
-        token_url = "https://identity.xero.com/connect/token"
-        payload = {
-            "grant_type": "authorization_code",
-            "code": auth_code,
-            "redirect_uri": redirect_uri,
-            "client_id": client_id,
-            "client_secret": client_secret
-        }
-        headers = {
-            "Content-Type": "application/x-www-form-urlencoded"
-        }
-        response = requests.post(token_url, data=payload, headers=headers)
-        print("Status Code (token):", response.status_code)
-        try:
-            token_data = response.json()
-            print(json.dumps(token_data, indent=4))
-            access_token = token_data.get("access_token")
-            if response.status_code == 200 and access_token:
-                print("\n✅ access_token:\n", access_token)
-                return access_token
-            else:
-                print("❌ Failed to get access token.")
-                return None
-        except Exception as e:
-            print("❌ Error reading token response:", e)
-            return None
-
-    def get_tenant_id_from_access_token(self, access_token):
-        """
-        Use the access token to get the Xero tenant ID.
-        Returns the tenant_id (str) if successful, else None.
-        """
-        url = "https://api.xero.com/connections"
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Accept": "application/json"
-        }
-        response = requests.get(url, headers=headers)
-        print("Status Code (connections):", response.status_code)
-        try:
-            data = response.json()
-            print(json.dumps(data, indent=4))
-            if response.status_code == 200 and data:
-                tenant_id = data[0]["tenantId"]
-                tenant_name = data[0]["tenantName"]
-                print("✅ Tenant ID:", tenant_id)
-                print("✅ Tenant Name:", tenant_name)
-                return tenant_id
-            else:
-                print("⚠️ No connections found or failed request.")
-                return None
-        except Exception as e:
-            print("❌ Error parsing JSON:", e)
-            print(response.text)
-            return None
+        # If we don't have a tenant ID, get it
+        if not self.tenant_id:
+            if not self.get_tenant_id():
+                return None, None
+        
+        return self.access_token, self.tenant_id
 
 def get_fresh_xero_credentials():
     """
-    Get fresh Xero access token and tenant ID using OAuth flow
+    Get fresh Xero access token and tenant ID using refresh token flow
     """
     try:
-        xero_auth = XeroAutomation()
+        token_manager = XeroTokenManager()
+        access_token, tenant_id = token_manager.get_valid_credentials()
         
-        # Get authorization code using the XPath method (more reliable)
-        auth_code = xero_auth.get_auth_code_xpath()
-        if not auth_code:
-            st.error("Failed to get authorization code")
+        if access_token and tenant_id:
+            return access_token, tenant_id
+        else:
+            st.error("Failed to get valid Xero credentials")
             return None, None
-        
-        # Exchange auth code for access token
-        client_id = "9D62E06B38054EDEA577D97E40879B12"
-        client_secret = "ga4dshD3FvxV4akIr1_uB9zDJW3pRyDA10YGb72rpNpGmTw0"
-        redirect_uri = "http://localhost:5000/callback"
-        
-        access_token = xero_auth.get_access_token_from_auth_code(auth_code, client_id, client_secret, redirect_uri)
-        if not access_token:
-            st.error("Failed to get access token")
-            return None, None
-        
-        # Get tenant ID
-        tenant_id = xero_auth.get_tenant_id_from_access_token(access_token)
-        if not tenant_id:
-            st.error("Failed to get tenant ID")
-            return None, None
-        
-        return access_token, tenant_id
-        
+            
     except Exception as e:
         st.error(f"Error getting Xero credentials: {str(e)}")
         return None, None
+
+def test_token_refresh():
+    """
+    Test function to demonstrate token refresh and replacement
+    """
+    try:
+        print("🧪 Testing Token Refresh Process...")
+        
+        # Create token manager
+        token_manager = XeroTokenManager()
+        print(f"Initial Refresh Token: {token_manager.refresh_token[:30]}...")
+        
+        # Attempt to refresh tokens
+        success = token_manager.refresh_access_token()
+        
+        if success:
+            print("✅ Token refresh test successful!")
+            print(f"New Access Token: {token_manager.access_token[:50]}...")
+            print(f"New Refresh Token: {token_manager.refresh_token[:30]}...")
+            
+            # Check if global variables were updated
+            global XERO_ACCESS_TOKEN, XERO_REFRESH_TOKEN
+            print(f"Global Access Token: {XERO_ACCESS_TOKEN[:50] if XERO_ACCESS_TOKEN else 'None'}...")
+            print(f"Global Refresh Token: {XERO_REFRESH_TOKEN[:30]}...")
+            
+            # Check if file was updated
+            try:
+                with open("refresh_token.json", "r") as f:
+                    file_data = json.load(f)
+                file_token = file_data.get("refresh_token", "")
+                last_updated = file_data.get("last_updated", "Unknown")
+                print(f"File Refresh Token: {file_token[:30]}...")
+                print(f"Last Updated: {last_updated}")
+                
+                if file_token == token_manager.refresh_token:
+                    print("✅ File token matches instance token")
+                else:
+                    print("❌ File token does not match instance token")
+                    
+            except Exception as e:
+                print(f"❌ Error reading token file: {e}")
+                
+            return True
+        else:
+            print("❌ Token refresh test failed!")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Error in token refresh test: {e}")
+        return False
 
 def extract_raw_context_from_file(filepath: str, mime_type: str):
     """
@@ -798,6 +728,33 @@ def send_to_xero_api(xero_payload_data: dict):
                 print("❌ Failed to parse JSON:", e)
                 print(response.text)
                 return {"success": False, "error": "Failed to parse JSON response", "text": response.text, "status_code": response.status_code}
+        elif response.status_code == 401:
+            # Token expired, refresh and retry
+            print("⚠️ Access token expired, refreshing and retrying...")
+            token_manager = XeroTokenManager()
+            if token_manager.refresh_access_token():
+                # Retry with new token
+                new_access_token = token_manager.access_token
+                headers["Authorization"] = f"Bearer {new_access_token}"
+                
+                retry_response = requests.post(url, headers=headers, json=xero_payload_data)
+                print(f"Retry Status Code: {retry_response.status_code}")
+                
+                if retry_response.status_code == 200:
+                    try:
+                        result = retry_response.json()
+                        print(json.dumps(result, indent=4))
+                        return {"success": True, "data": result, "status_code": retry_response.status_code}
+                    except Exception as e:
+                        print("❌ Failed to parse JSON on retry:", e)
+                        print(retry_response.text)
+                        return {"success": False, "error": "Failed to parse JSON response on retry", "text": retry_response.text, "status_code": retry_response.status_code}
+                else:
+                    print("❌ API request failed on retry")
+                    print(retry_response.text)
+                    return {"success": False, "error": "API request failed on retry", "text": retry_response.text, "status_code": retry_response.status_code}
+            else:
+                return {"success": False, "error": "Failed to refresh access token", "status_code": response.status_code}
         else:
             print("❌ API request failed")
             print(response.text)
@@ -1104,6 +1061,58 @@ st.set_page_config(page_title="Document Extraction Tool", page_icon="📄", layo
 st.title("📄 WhatsApp Document Extraction Tool")
 st.markdown("Fetch and extract text from WhatsApp files using Google Gemini AI")
 
+# Xero Token Status
+st.sidebar.header("🔐 Xero Authentication")
+
+# Always show current token status
+token_manager = XeroTokenManager()
+st.sidebar.info(f"**Current Refresh Token:** {token_manager.refresh_token[:30]}...")
+if token_manager.access_token:
+    st.sidebar.success(f"**Access Token:** {token_manager.access_token[:30]}...")
+else:
+    st.sidebar.warning("**Access Token:** Not available")
+
+if token_manager.tenant_id:
+    st.sidebar.success(f"**Tenant ID:** {token_manager.tenant_id}")
+else:
+    st.sidebar.warning("**Tenant ID:** Not available")
+
+# Check if token file exists and show its content
+try:
+    if os.path.exists("refresh_token.json"):
+        with open("refresh_token.json", "r") as f:
+            file_data = json.load(f)
+        file_token = file_data.get("refresh_token", "")
+        last_updated = file_data.get("last_updated", "Unknown")
+        
+        st.sidebar.info(f"**File Token:** {file_token[:30]}...")
+        st.sidebar.info(f"**Last Updated:** {last_updated}")
+        
+        if file_token == token_manager.refresh_token:
+            st.sidebar.success("✅ File and memory tokens match")
+        else:
+            st.sidebar.warning("⚠️ File and memory tokens differ")
+    else:
+        st.sidebar.warning("📄 No token file found")
+except Exception as e:
+    st.sidebar.error(f"❌ Error reading token file: {e}")
+
+if st.sidebar.button("🔄 Manual Token Refresh", key="manual_refresh"):
+    with st.sidebar.spinner("Refreshing..."):
+        token_manager = XeroTokenManager()
+        if token_manager.refresh_access_token():
+            st.sidebar.success("✅ Tokens refreshed!")
+            st.sidebar.info(f"New Refresh Token: {token_manager.refresh_token[:30]}...")
+        else:
+            st.sidebar.error("❌ Refresh failed!")
+
+if st.sidebar.button("🧪 Test Token Refresh", key="test_refresh"):
+    with st.sidebar.spinner("Testing..."):
+        if test_token_refresh():
+            st.sidebar.success("✅ Token refresh test passed!")
+        else:
+            st.sidebar.error("❌ Token refresh test failed!")
+
 # WhatsApp fetch section
 st.header("📱 Fetch from WhatsApp")
 
@@ -1242,6 +1251,17 @@ if hasattr(st.session_state, 'extraction_complete') and st.session_state.extract
                 else:
                     st.error("❌ Xero authentication failed!")
         
+        # Add button to manually refresh tokens
+        if st.button("🔄 Refresh Xero Tokens", type="secondary", key="refresh_tokens"):
+            with st.spinner("Refreshing Xero tokens..."):
+                token_manager = XeroTokenManager()
+                if token_manager.refresh_access_token():
+                    st.success("✅ Tokens refreshed successfully!")
+                    st.info(f"New Access Token: {token_manager.access_token[:50]}...")
+                    st.info(f"New Refresh Token: {token_manager.refresh_token[:50]}...")
+                else:
+                    st.error("❌ Failed to refresh tokens!")
+        
         # Add button to send to Xero API
         if st.button("🚀 Send to Xero API", type="primary", key="send_to_xero"):
             with st.spinner("Sending invoice to Xero..."):
@@ -1345,6 +1365,13 @@ with st.expander("ℹ️ How to use"):
     - Supports document messages (PDFs, images, etc.)
     - Files are decrypted, validated, and processed
     - Requires PyCryptodome library for decryption: `pip install pycryptodome`
+    
+    ### Xero Authentication:
+    - Uses refresh token-based authentication (no browser automation)
+    - Tokens are automatically refreshed when expired
+    - Refresh tokens are saved to `xero_refresh_token.txt` for persistence
+    - Manual token refresh available in sidebar
+    - Automatic retry on 401 authentication errors
     """)
 
 # Footer
