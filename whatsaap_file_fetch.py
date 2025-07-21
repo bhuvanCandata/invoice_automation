@@ -765,8 +765,8 @@ def send_to_xero_api(xero_payload_data: dict):
         return {"success": False, "error": str(e)}
 
 # WhatsApp API Configuration
-WHATSAPP_API_KEY = "QyoJ9P1U.mra/K9+U6HFu6KRjyY0rlq26AS5hIrWC3JGqewjhVBc="
-WHATSAPP_BASE_URL = "https://api17.unipile.com:14771/api/v1"
+WHATSAPP_API_KEY = "UCPOS/VU.y+tOEOcPIJ3amI/ndi5x0RCjcmy99Tihif7abQJzqtg="
+WHATSAPP_BASE_URL = "https://api15.unipile.com:14590/api/v1"
 
 def validate_pdf_file(file_path):
     """
@@ -892,11 +892,11 @@ def send_whatsapp_message(chat_id, message_text):
     if not attendee_id:
         return False, f"Could not get attendee ID for chat_id: {chat_id}"
     
-    API_URL = "https://api17.unipile.com:14771/api/v1/chats"
+    API_URL = "https://api15.unipile.com:14590/api/v1/chats"
     
     # Construct multipart fields as a list of tuples
     files = [
-        ('account_id', (None, '-mNzqaS2TdOJlMqwv3JZzQ')),             # your WhatsApp account ID
+        ('account_id', (None, '9f9uio56sopa456s')),             # your WhatsApp account ID
         ('attendees_ids', (None, attendee_id)),                       # recipient (phone number with @s.whatsapp.net)
         ('text', (None, message_text))                               # message text
     ]
