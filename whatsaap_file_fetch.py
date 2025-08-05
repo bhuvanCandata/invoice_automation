@@ -25,8 +25,8 @@ genai.configure(api_key=API_KEY)
 model = genai.GenerativeModel("gemini-1.5-flash")
 
 # Xero API Configuration
-XERO_CLIENT_ID = "9D62E06B38054EDEA577D97E40879B12"
-XERO_CLIENT_SECRET = "ga4dshD3FvxV4akIr1_uB9zDJW3pRyDA10YGb72rpNpGmTw0"
+XERO_CLIENT_ID = "AC7C52359BC24721BBC3B9E05624AA55"
+XERO_CLIENT_SECRET = "7lOruP7EPO4SkCBKC4km0_4s6AojpetW0VQaVxLFpNx0Q26D"
 
 # Global variables to store tokens
 XERO_REFRESH_TOKEN = "jKnAS7ftPznEYT_mpVSkgIVMjmF7yU8bHjUUSeWJZI0"  # Initial refresh token
