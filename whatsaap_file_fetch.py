@@ -765,8 +765,8 @@ def send_to_xero_api(xero_payload_data: dict):
         return {"success": False, "error": str(e)}
 
 # WhatsApp API Configuration
-WHATSAPP_API_KEY = "UCPOS/VU.y+tOEOcPIJ3amI/ndi5x0RCjcmy99Tihif7abQJzqtg="
-WHATSAPP_BASE_URL = "https://api15.unipile.com:14590/api/v1"
+WHATSAPP_API_KEY = "D+bB8gKs.9LjARlG4zmh24vu5MIyv0iMYVXQinFcU6MVDCvG5C5U="
+WHATSAPP_BASE_URL = "https://api15.unipile.com:14548/api/v1"
 
 def validate_pdf_file(file_path):
     """
