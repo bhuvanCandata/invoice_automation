@@ -896,7 +896,7 @@ def send_whatsapp_message(chat_id, message_text):
     
     # Construct multipart fields as a list of tuples
     files = [
-        ('account_id', (None, 'Yk08cDzzdsqs9_8ds')),             # your WhatsApp account ID
+        ('account_id', (None, 'EDeqAoEmTDmLuWmCbeAyHQ')),             # your WhatsApp account ID
         ('attendees_ids', (None, attendee_id)),                       # recipient (phone number with @s.whatsapp.net)
         ('text', (None, message_text))                               # message text
     ]
