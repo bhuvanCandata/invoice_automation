@@ -892,7 +892,7 @@ def send_whatsapp_message(chat_id, message_text):
     if not attendee_id:
         return False, f"Could not get attendee ID for chat_id: {chat_id}"
     
-    API_URL = "https://api15.unipile.com:14590/api/v1/chats"
+    API_URL = "https://api15.unipile.com:14548/api/v1/chats"
     
     # Construct multipart fields as a list of tuples
     files = [
